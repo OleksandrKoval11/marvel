@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import PropTypes from 'prop-types';
+import { CSSTransition, TransitionGroup } from 'react-transition-group';
 
 import useMarvelService from '../../services/MarvelService';
 import Spinner from '../spinner/Spinner';
@@ -7,13 +8,29 @@ import ErrorMessage from '../errorMessage/ErrorMessage';
 
 import './charList.scss';
 
+const setContent = (process, Component, newItemLoading) => {
+    switch(process) {
+        case 'waiting':
+            return <Spinner/>;
+        case 'loading':
+            return newItemLoading ? <Component/> : <Spinner/>;
+        case 'confirmed':
+            return <Component/>;
+        case 'error': 
+            return <ErrorMessage/>;
+        default: 
+            throw new Error('Unexpected process state');
+
+    }
+}
+
 const CharList = (props) => {
     const [char, setChar] = useState([]);
     const [newItemLoading, setNewItemLoading] = useState(false);
     const [offset, setOffset] = useState(210);
     const [charEnded, setCharEnded] = useState(false);
 
-    const {loading, error, getAllCharacters} = useMarvelService();
+    const {getAllCharacters, process, setProcess} = useMarvelService();
 
     useEffect(() => {
         onUpdateChars(offset, true);
@@ -23,6 +40,7 @@ const CharList = (props) => {
         initial ? setNewItemLoading(false) : setNewItemLoading(true);
         getAllCharacters(offset)
             .then(onCharsLoaded)
+            .then(() => setProcess('confirmed'))
     }
 
     const onCharsLoaded = (newChar) => {
@@ -50,47 +68,49 @@ const CharList = (props) => {
             let imgStyles = thumbnail === "http://i.annihil.us/u/prod/marvel/i/mg/b/40/image_not_available.jpg" ? {objectFit: 'unset'} : null;
 
             return (
-                <li
-                className="char__item"
-                tabIndex={0}
-                ref={el => itemsRef.current[i] = el}
-                key={id}
-                onKeyDown={(e) => {
-                    if(e.key === ' ' || e.key === 'Enter'){
+                <CSSTransition key={id} timeout={500} classNames="char__item">
+                    <li
+                    className="char__item"
+                    tabIndex={0}
+                    ref={el => itemsRef.current[i] = el}
+                    key={id}
+                    onKeyDown={(e) => {
+                        if(e.key === ' ' || e.key === 'Enter'){
+                            props.onCharSelected(id);
+                            setActiveRef(i)
+                        }
+                    }
+
+                    }
+                    onClick={() => {
                         props.onCharSelected(id);
                         setActiveRef(i)
-                    }
-                }
-
-                }
-                onClick={() => {
-                    props.onCharSelected(id);
-                    setActiveRef(i)
-                   
-                }}>
-                    <img src={thumbnail}  style={imgStyles} alt="abyss"/>
-                    <div className="char__name">{name}</div>
-                </li>
+                    
+                    }}>
+                        <img src={thumbnail}  style={imgStyles} alt={name}/>
+                        <div className="char__name">{name}</div>
+                    </li>
+                </CSSTransition>
             )
             
         })
 
         return (
             <ul className="char__grid">
-                {items}
+                <TransitionGroup component={null}>
+                    {items}
+                </TransitionGroup>
             </ul>
         )
     }
 
-    const items = renderItems(char);
-    const spinner = loading && !newItemLoading ? <Spinner/> : null;
-    const errorMessage = error ? <ErrorMessage/> : null;
+    const elements = useMemo(() => {
+        return setContent(process, () => renderItems(char), newItemLoading);
+    }, [process])
 
     return (
         <div className="char__list">
-            {errorMessage}
-            {spinner}
-            {items}
+            {elements}
             <button className="button button__main button__long" 
             disabled={newItemLoading}
             style={{'display': charEnded ? 'none' : 'block'}}>
